@@ -1,10 +1,9 @@
 import streamlit as st
 from utils.data_manager import init_data, get_data, sidebar_data_controls
-from utils.ai_helper import sidebar_api_key_input
 from utils.chat import render_chat
 from analytics import (
-    init_page, module_started, module_completed,
-    track, track_navigation, track_chat_message,
+    init_page, module_started,
+    track, track_navigation, track_chat_message, track_data_export,
     Module
 )
 
@@ -14,15 +13,16 @@ st.set_page_config(
     layout="wide",
 )
 
+# ── Analytics: entrada na página ─────────────────────────
 init_page(Module.HOME)
 init_data()
 data = get_data()
 
-# ---------- Barra lateral (comum a todas as páginas) ----------
+# ---------- Barra lateral ----------
 st.sidebar.title("🧭 Gestor Estratégico")
 sidebar_data_controls()
 
-# ---------- Conteúdo da Home ----------
+# ---------- Título & Boas-vindas ----------
 st.title("🧭 Gestor Estratégico")
 st.caption("Ferramenta de apoio ao planejamento estratégico de empresas")
 
@@ -34,6 +34,25 @@ barra lateral para navegar entre as etapas.
 
 module_started(Module.HOME)
 
+# ── Card de boas-vindas / como usar ──────────────────────
+with st.expander("👋 Primeiros passos — como usar o SIPE", expanded=True):
+    st.markdown("""
+    **O SIPE (Sistema Integrado de Planejamento Estratégico) é composto por 12 etapas.**
+
+    Siga a ordem sugerida para obter o melhor resultado:
+
+    1. **Cadastre sua empresa** no formulário abaixo
+    2. **Navegue pelas etapas** usando o menu lateral ou os botões de próxima etapa
+    3. **Use a IA** (botão 🤖) para gerar sugestões em cada bloco
+    4. **Edite e personalize** — as sugestões da IA são apenas um ponto de partida
+    5. **Salve seu progresso** com o botão ⬇️ na barra lateral (exporta .json)
+    6. **Retome depois** carregando o arquivo .json com o botão ⬆️
+    7. **No final**, gere o relatório completo em Markdown ou PDF
+
+    💡 *Dica: preencha os dados da empresa primeiro — assim o assistente de IA terá contexto para ajudar melhor.*
+    """)
+
+# ---------- Dados da empresa ----------
 with st.form("form_empresa"):
     st.subheader("🏢 Dados da empresa")
     col1, col2 = st.columns(2)
@@ -43,7 +62,9 @@ with st.form("form_empresa"):
     with col2:
         cidade = st.text_input("Cidade/Estado", value=data["empresa"]["cidade_estado"])
         responsavel = st.text_input("Responsável pelo planejamento", value=data["empresa"]["responsavel"])
-    salvar = st.form_submit_button("Salvar dados da empresa", width="stretch")
+
+    salvar = st.form_submit_button("💾 Salvar dados da empresa", use_container_width=True)
+
     if salvar:
         data["empresa"].update(
             {"nome": nome, "setor": setor, "cidade_estado": cidade, "responsavel": responsavel}
@@ -53,35 +74,38 @@ with st.form("form_empresa"):
             "setor": setor,
             "has_data": bool(nome or setor)
         })
-        st.success("Dados da empresa salvos!")
+        st.success("✅ Dados da empresa salvos! O assistente de IA agora conhece seu negócio.")
 
 st.divider()
 
+# ---------- Roteiro do planejamento ----------
 st.subheader("🗺️ Roteiro do planejamento")
 
 etapas = [
-    "📋 Business Model Canvas",
-    "🌍 Análise PESTEL",
-    "⚔️ 5 Forças de Porter",
-    "🎯 Análise SWOT",
-    "🧭 Planejamento Estratégico",
-    "✅ Plano de Ação (5W2H)",
-    "📋 Planos por Função",
-    "💰 Orçamento",
-    "🛃 Monitoramento",
-    "🔄 Revisão Estratégica",
-    "📈 Painel de Controle",
-    "📄 Relatório Completo",
+    ("📋 Business Model Canvas", "Mapeie seu modelo de negócio em 9 blocos"),
+    ("🌍 Análise PESTEL", "Analise o ambiente externo da empresa"),
+    ("⚔️ 5 Forças de Porter", "Avalie a competitividade do setor"),
+    ("🎯 Análise SWOT", "Identifique forças, fraquezas, oportunidades e ameaças"),
+    ("🧭 Planejamento Estratégico", "Defina missão, visão, valores e objetivos"),
+    ("✅ Plano de Ação (5W2H)", "Crie ações concretas com responsáveis e prazos"),
+    ("📋 Planos por Função", "Desdobre o planejamento por departamento"),
+    ("💰 Orçamento", "Consolide custos, receitas e investimentos"),
+    ("🛃 Monitoramento", "Acompanhe KPIs e status das ações"),
+    ("🔄 Revisão Estratégica", "Registre resultados e ajuste o plano"),
+    ("📈 Painel de Controle", "Dashboard executivo com métricas consolidadas"),
+    ("📄 Relatório Completo", "Gere o documento final para apresentação"),
 ]
 
 cols = st.columns(2)
-for i, etapa in enumerate(etapas):
+for i, (etapa, descricao) in enumerate(etapas):
     with cols[i % 2]:
-        st.markdown(f"**{etapa}**")
+        st.markdown(f"**{etapa}**  
+<small style='color:#666'>{descricao}</small>", unsafe_allow_html=True)
 
 st.divider()
 
-st.subheader("📊 Resumo do Planejamento")
+# ---------- Progresso ----------
+st.subheader("📊 Progresso do seu planejamento")
 
 # Calcular progresso
 total_secoes = 11
@@ -124,21 +148,29 @@ with col4:
     deptos = len(data.get("departamentos", {}))
     st.metric("Departamentos", deptos)
 
-# Barra de progresso
 st.progress(progresso / 100, text=f"Progresso do planejamento: {progresso:.0f}%")
 
+if progresso == 0:
+    st.info("🚀 Comece cadastrando os dados da empresa acima e siga o roteiro.")
+elif progresso < 50:
+    st.info("📈 Você está no caminho! Continue preenchendo as análises estratégicas.")
+elif progresso < 100:
+    st.success("🎯 Quase lá! Ajuste os planos departamentais e finalize o orçamento.")
+else:
+    st.balloons()
+    st.success("🎉 Parabéns! Seu planejamento estratégico está completo. Gere o relatório!")
+
 st.info(
-    "💡 Use o botão **'⬇️ Baixar dados (.json)'** na barra lateral sempre que quiser "
-    "salvar seu progresso, e **'⬆️ Carregar dados (.json)'** para retomar depois.",
-    icon="💡",
+    "💡 **Dica de segurança:** use o botão **'⬇️ Baixar dados (.json)'** na barra lateral "
+    "sempre que quiser salvar seu progresso, e **'⬆️ Carregar dados (.json)'** para retomar depois.",
+    icon="💾",
 )
 
-# ========== ASSISTENTE IA PARA AJUDA ==========
+# ---------- Assistente IA ----------
 st.divider()
 st.subheader("💬 Tem dúvidas? Consulte nosso Assistente IA")
 
 empresa = data.get("empresa", {})
-
 empresa_nome = empresa.get("nome", "").strip()
 empresa_setor = empresa.get("setor", "").strip()
 empresa_cidade = empresa.get("cidade_estado", "").strip()
@@ -146,7 +178,7 @@ empresa_responsavel = empresa.get("responsavel", "").strip()
 
 if not empresa_nome:
     st.warning(
-        "⚠️ Cadastre primeiro os dados da empresa para utilizar o assistente de IA.",
+        "⚠️ Cadastre primeiro os dados da empresa (acima) para utilizar o assistente de IA com contexto personalizado.",
         icon="⚠️"
     )
 else:
@@ -201,6 +233,12 @@ else:
     Responda em português do Brasil, de forma prática e objetiva.
     """
 
+    # Tracking de chat: detecta se o usuário enviou mensagem
+    # Nota: o tracking real da mensagem deve ser inserido dentro de render_chat
+    # ou na função utils/chat.py. Aqui registramos apenas o início do chat.
+    if "messages_home" not in st.session_state:
+        track("chat_opened", Module.HOME, metadata={"has_company_data": bool(empresa_nome)})
+
     render_chat(
         messages_key="messages_home",
         placeholder="Pergunte ao assistente sobre o que faz o SIPE...",
@@ -208,9 +246,10 @@ else:
         context=contexto,
     )
 
-# ========== BOTÃO PRÓXIMA ETAPA ==========
+# ---------- Próxima etapa ----------
+st.divider()
 col_prox1, col_prox2, col_prox3 = st.columns([1, 2, 1])
 with col_prox2:
-    if st.button("➡️ Vamos para a Próxima Etapa? > Canvas Business Model", width="stretch"):
+    if st.button("➡️ Vamos começar? > Business Model Canvas", use_container_width=True):
         track_navigation(Module.HOME, "1_📋_Business_Model_Canvas.py")
         st.switch_page("pages/1_📋_Business_Model_Canvas.py")
